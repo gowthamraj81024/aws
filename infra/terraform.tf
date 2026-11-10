@@ -1,6 +1,11 @@
-# Terraform configuration for AWS EC2 infrastructure
+
+# ==========================================
+# 1. TERRAFORM CONFIGURATION
+# ==========================================
 
 terraform {
+  required_version = ">= 1.5.0"
+
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -9,16 +14,35 @@ terraform {
   }
 }
 
+# ==========================================
+# 2. AWS PROVIDER
+# ==========================================
+
 provider "aws" {
   region = "ap-south-1"
 }
 
-# Get default VPC
+# ==========================================
+# 3. INPUT VARIABLES
+# ==========================================
+
+variable "ssh_allowed_cidr" {
+  description = "Your public IP address in CIDR notation"
+  type        = string
+}
+
+# ==========================================
+# 4. DEFAULT VPC
+# ==========================================
+
 data "aws_vpc" "default" {
   default = true
 }
 
-# Get Amazon Linux 2023 AMI
+# ==========================================
+# 5. AMAZON LINUX 2023 AMI
+# ==========================================
+
 data "aws_ami" "amazon_linux" {
   most_recent = true
   owners      = ["amazon"]
@@ -32,14 +56,32 @@ data "aws_ami" "amazon_linux" {
     name   = "architecture"
     values = ["x86_64"]
   }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
 }
 
-# Security Group
+# ==========================================
+# 6. SECURITY GROUP
+# ==========================================
+
 resource "aws_security_group" "web_sg" {
   name        = "ec2-web-security-group"
-  description = "Allow HTTP traffic"
+  description = "Allow HTTP and restricted SSH access"
   vpc_id      = data.aws_vpc.default.id
 
+  # SSH access - restricted to your IP
+  ingress {
+    description = "SSH access"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = [var.ssh_allowed_cidr]
+  }
+
+  # HTTP access
   ingress {
     description = "HTTP access"
     from_port   = 80
@@ -48,19 +90,29 @@ resource "aws_security_group" "web_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  # Outbound traffic
   egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
+  tags = {
+    Name = "EC2-Web-Security-Group"
+  }
 }
 
-# EC2 Instance
+# ==========================================
+# 7. EC2 INSTANCE
+# ==========================================
+
 resource "aws_instance" "web_server" {
-  ami                    = data.aws_ami.amazon_linux.id
-  instance_type          = "t3.micro"
-  vpc_security_group_ids = [aws_security_group.web_sg.id]
+  ami                         = data.aws_ami.amazon_linux.id
+  instance_type               = "t3.micro"
+  key_name                    = "EC2_SSH_PRIVATE_KEY"
+  vpc_security_group_ids      = [aws_security_group.web_sg.id]
+  associate_public_ip_address = true
 
   user_data = <<-EOF
     #!/bin/bash
@@ -68,19 +120,37 @@ resource "aws_instance" "web_server" {
     systemctl enable httpd
     systemctl start httpd
 
-    echo "<h1>Hello from AWS EC2!</h1>" > /var/www/html/index.html
+    echo '<h1>Welcome to AWS EC2!</h1>' > /var/www/html/index.html
+    echo '<p>Apache Web Server is running successfully.</p>' >> /var/www/html/index.html
   EOF
 
   tags = {
-    Name = "Terraform-Web-Server"
+    Name        = "Terraform-Web-Server"
+    Environment = "Development"
+    ManagedBy   = "Terraform"
   }
 }
 
-# Output
+# ==========================================
+# 8. OUTPUTS
+# ==========================================
+
+output "ec2_instance_id" {
+  description = "EC2 Instance ID"
+  value       = aws_instance.web_server.id
+}
+
 output "ec2_public_ip" {
-  value = aws_instance.web_server.public_ip
+  description = "EC2 Public IP"
+  value       = aws_instance.web_server.public_ip
+}
+
+output "ec2_public_dns" {
+  description = "EC2 Public DNS"
+  value       = aws_instance.web_server.public_dns
 }
 
 output "website_url" {
-  value = "http://${aws_instance.web_server.public_dns}"
+  description = "Website URL"
+  value       = "http://${aws_instance.web_server.public_dns}"
 }
