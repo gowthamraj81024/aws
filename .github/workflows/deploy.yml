@@ -20,13 +20,23 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      
       - name: Configure SSH
         env:
           EC2_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
         run: |
-          mkdir -p ~/.ssh
-          printf '%s\n' "$EC2_KEY" > ~/.ssh/ec2_key
-          chmod 600 ~/.ssh/ec2_key
+          mkdir -p "$HOME/.ssh"
+
+          if [ -z "$EC2_KEY" ]; then
+            echo "ERROR: EC2_SSH_PRIVATE_KEY secret is empty"
+            exit 1
+          fi
+
+          printf '%s\n' "$EC2_KEY" > "$HOME/.ssh/ec2_key"
+          chmod 600 "$HOME/.ssh/ec2_key"
+
+          echo "SSH key configured successfully"
+
 
       - name: Copy Website to EC2
         env:
