@@ -1,3 +1,4 @@
+
 name: CI Pipeline
 
 on:
@@ -6,17 +7,27 @@ on:
       - main
 
 jobs:
-  build:
+  validate:
+    name: Validate Application
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Code
+      - name: Checkout Source Code
         uses: actions/checkout@v4
 
-      - name: Verify Application Files
-        run: |
-          test -f app/index.html
-          test -f app/style.css
+      - name: Check HTML File
+        run: test -f app/index.html
 
-      - name: Build Successful
-        run: echo "CI Pipeline Successful"
+      - name: Check CSS File
+        run: test -f app/style.css
+
+      - name: Validate Terraform
+        run: |
+          docker run --rm \
+            -v "$PWD/infra:/workspace" \
+            -w /workspace \
+            hashicorp/terraform:latest \
+            fmt -check -recursive
+
+      - name: CI Completed
+        run: echo "All validation checks passed!"
